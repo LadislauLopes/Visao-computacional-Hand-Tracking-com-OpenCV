@@ -1,8 +1,42 @@
 import os
+from time import sleep
 
 import cv2
 import mediapipe as mp
+from pynput.keyboard import Controller
 
+branco = (255,255,255)
+preto = (0,0,0)
+azul = (255,0,0)
+verde = (0,255,0)
+vermelho = (0,0,255)
+azul_claro = (255,255,0)
+
+teclas = [['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+            ['A','S','D','F','G','H','J','K','L'],
+            ['Z','X','C','V','B','N','M', ',','.',' ']]
+offset =50
+
+
+
+
+mp_maos= mp.solutions.hands
+mp_desenho = mp.solutions.drawing_utils
+
+maos = mp_maos.Hands()
+
+camera = cv2.VideoCapture(0) #CAPTURANDO A WEBCAM
+
+resolucao_x = 1280
+resolucao_y = 720
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolucao_x)
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolucao_y)
+bloco_notas = False
+chorme = False
+calculadora = False
+contador = 0 
+texto = ">"
+teclado = Controller()
 
 def encontra_coordenadas_maos(img, lado_invertido = False):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
@@ -35,10 +69,6 @@ def encontra_coordenadas_maos(img, lado_invertido = False):
 
 
 
-
-
-
-
 def dedos_levantados(mao):
     dedos = []
     for ponta_dedo in [8,12,16,20]:
@@ -49,31 +79,53 @@ def dedos_levantados(mao):
     return(dedos)
 
 
-
-mp_maos= mp.solutions.hands
-mp_desenho = mp.solutions.drawing_utils
-
-maos = mp_maos.Hands()
-
-camera = cv2.VideoCapture(0) #CAPTURANDO A WEBCAM
-
-resolucao_x = 1280
-resolucao_y = 720
-camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolucao_x)
-camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolucao_y)
-bloco_notas = False
-chorme = False
-calculadora = False
-
+def imprime_botoes(img, posicao, letra, tamanho =50, cor_retangulo = branco):
+    cv2.rectangle(img,posicao,(posicao[0]+tamanho, posicao[1]+tamanho),cor_retangulo,cv2.FILLED)
+    cv2.rectangle(img,posicao,(posicao[0]+tamanho, posicao[1]+tamanho),azul,2)
+    cv2.putText(img, letra, (posicao[0]+15, posicao[1]+30), cv2.FONT_HERSHEY_COMPLEX, 1, preto, 1)
+    return img
 
 while True:
     sucesso, img = camera.read()
     img = cv2.flip(img, 1) # invertendo a esquerda pela direita
     img,todas_maos = encontra_coordenadas_maos(img)
+
+
     
     if len(todas_maos) == 1: #so irá mandar os comandos caso tenha uma mão na tela
+        info_dedos_mao1 = dedos_levantados(todas_maos[0])
+        if todas_maos[0]["lado"] == "Left":
+            indicador_x, indicador_y, indicador_z = todas_maos[0]['coordenadas'][8]
+            cv2.putText(img, f'Distancia camera: {indicador_z}', (850, 50), cv2.FONT_HERSHEY_COMPLEX,1,branco,2)
+
+            for indice_linha, linha_teclado in enumerate(teclas):
+                for indice, letra in enumerate(linha_teclado):
+                    if sum(info_dedos_mao1) <= 1: 
+                        letra = letra.lower()
+                    img= imprime_botoes(img, (offset+indice*80, indice+indice_linha*80), letra)
+
+                    if offset+indice*80 < indicador_x < 100+indice*80 and offset+indice_linha*80 < indicador_y < 100+indice_linha*80:
+                        img = imprime_botoes(img, (offset+indice*80, indice+indice_linha*80), letra, cor_retangulo=verde)
+                        if indicador_z<-85:
+                            contador = 1 
+                            escreve = letra
+                            img = imprime_botoes(img, (offset+indice*80, indice+indice_linha*80), letra, cor_retangulo=azul_claro)
+            if contador: 
+                contador +=1
+                if contador==3:
+                    texto += escreve
+                    contador=0
+                    teclado.press(escreve)
+            if info_dedos_mao1 == [False, False, False, True] and len(texto)>1:
+                texto = texto[:-1]
+                sleep(0.15)
+
+            cv2.rectangle(img, (offset, 450),(830, 500), branco, cv2.FILLED)
+            cv2.rectangle(img, (offset, 450),(830, 500), azul, 1)
+            cv2.putText(img, texto[-40:],(offset, 480), cv2.FONT_HERSHEY_COMPLEX, 1, preto,2 )
+            cv2.circle(img,(indicador_x, indicador_y),7, azul, cv2.FILLED)
+
         if todas_maos[0]["lado"] == "Right":
-            info_dedos_mao1 = dedos_levantados(todas_maos[0])
             print(info_dedos_mao1)
             if info_dedos_mao1 == [True,False,False,False] and bloco_notas==False:
                 os.startfile(r"C:\Windows\system32\notepad.exe")
@@ -97,3 +149,5 @@ while True:
 
     if tecla == 27:  #esc para o codigo
         break
+with open('texto.txt', 'w') as arquivo:
+    arquivo.write(texto)
